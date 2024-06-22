@@ -6,9 +6,21 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    setWindowTitle("AudioBrowser");
+
+    for(int i = 0; i < 4; i++)
+    {
+        m_tracksSet[i] = false;
+        m_channels[i] = 0;
+    }
+    m_sounds.reserve(4);
 
     connect(ui->playButton, SIGNAL(clicked(bool)), this, SLOT(playSound()));
     connect(ui->stopButton, SIGNAL(clicked(bool)), this, SLOT(stopSound()));
+    connect(ui->track1Button, &QPushButton::clicked, this, [this](){ mountTrack(0); });
+    connect(ui->track2Button, &QPushButton::clicked, this, [this](){ mountTrack(1); });
+    connect(ui->track3Button, &QPushButton::clicked, this, [this](){ mountTrack(2); });
+    connect(ui->track4Button, &QPushButton::clicked, this, [this](){ mountTrack(3); });
 
     m_dirModel = new QFileSystemModel(this);
     m_fileModel = new QFileSystemModel(this);
@@ -23,9 +35,13 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-    if( sound )
+    if( m_previewSound )
     {
-        Mix_FreeChunk( sound );
+        Mix_FreeChunk( m_previewSound );
+    }
+    for(int i = 0; i < 4; i++)
+    {
+        Mix_FreeChunk( m_sounds[i] );
     }
     Mix_CloseAudio();
     SDL_Quit();
@@ -53,6 +69,7 @@ void MainWindow::setupFileSystemModel()
     ui->dirView->hideColumn(1);
     ui->dirView->hideColumn(2);
 
+    /* Default path to be seen in the fileView */
     m_fileModel->setRootPath(rootPath);
     m_fileModel->setFilter(QDir::NoDotAndDotDot | QDir::Files);
     ui->fileView->setModel(m_fileModel);
@@ -79,6 +96,7 @@ bool MainWindow::createAudioDevice()
     {
         return false;
     }
+    Mix_AllocateChannels(5); //channel0: preview, channel1,2,3,4 to play
     return true;
 }
 
@@ -97,11 +115,16 @@ void MainWindow::setupSDL2()
     }
 }
 
+QString MainWindow::getFilePath() const
+{
+    return (m_fileModel->fileInfo(ui->fileView->currentIndex()).absoluteFilePath());
+}
+
 void MainWindow::loadSound()
 {
-    QString filePath = m_fileModel->fileInfo(ui->fileView->currentIndex()).absoluteFilePath();
-    sound = Mix_LoadWAV(filePath.toStdString().c_str());
-    if( !sound )
+    QString filePath = getFilePath();
+    m_previewSound = Mix_LoadWAV(filePath.toStdString().c_str());
+    if( !m_previewSound )
     {
         ui->errorView->setText(QString::fromStdString(Mix_GetError()));
     }
@@ -110,7 +133,7 @@ void MainWindow::loadSound()
 void MainWindow::playSound()
 {
     loadSound();
-    int channel = Mix_PlayChannel(0, sound, 0);
+    int channel = Mix_PlayChannel(0, m_previewSound, 0);
     if(channel == -1)
     {
         ui->errorView->setText(QString::fromStdString(Mix_GetError()));
@@ -120,4 +143,57 @@ void MainWindow::playSound()
 void MainWindow::stopSound()
 {
     Mix_HaltChannel(-1);
+}
+
+void MainWindow::mountTrack(const int& trackNum)
+{
+    QString filePath = getFilePath();
+    if(filePath != "")
+    {
+        m_tracksSet[trackNum] = true;
+        m_sounds[trackNum] = Mix_LoadWAV(filePath.toStdString().c_str());
+        if(!m_sounds[trackNum])
+        {
+            ui->errorView->setText(QString::fromStdString(Mix_GetError()));
+        }
+    }
+}
+
+void MainWindow::keyPressEvent( QKeyEvent* event )
+{
+    if( event->key() == Qt::Key_1)
+    {
+        if(m_tracksSet[0])
+        {
+            m_channels[0] = Mix_PlayChannel(1, m_sounds[0], 0);
+        }
+        event->accept();
+    }
+
+    if( event->key() == Qt::Key_2)
+    {
+        if(m_tracksSet[1])
+        {
+            m_channels[1] = Mix_PlayChannel(2, m_sounds[1], 0);
+        }
+        event->accept();
+    }
+
+    if( event->key() == Qt::Key_3)
+    {
+        if(m_tracksSet[2])
+        {
+            m_channels[2] = Mix_PlayChannel(3, m_sounds[2], 0);
+        }
+        event->accept();
+    }
+
+    if( event->key() == Qt::Key_4)
+    {
+        if(m_tracksSet[3])
+        {
+            m_channels[3] = Mix_PlayChannel(4, m_sounds[3], 0);
+        }
+        event->accept();
+    }
 }
